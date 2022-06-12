@@ -8,7 +8,7 @@ from datetime import datetime
 from datetime import date
 
 TOKEN_VK = 'a67f00c673c3d4b12800dd0ba29579ec56d804f3c5f3bbcef5328d4b3981fa5987b951cf2c8d8b24b9abd'
-TOKEN_YA = 'AQAAAAAAmqGlAADLW7pMZiqA9UKuijTKF5D1sKQ'
+TOKEN_YA = ''
 
 class YaDisk:
     home_path = os.getcwd()
