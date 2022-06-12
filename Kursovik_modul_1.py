@@ -4,11 +4,65 @@ import time
 import os
 import json
 import copy
+from datetime import datetime
+from datetime import date
 
-class VkPhoto:
-    url_general = 'https://api.vk.com/method/'
-    base_path = 'Photos_vk'
+TOKEN_VK = 'a67f00c673c3d4b12800dd0ba29579ec56d804f3c5f3bbcef5328d4b3981fa5987b951cf2c8d8b24b9abd'
+TOKEN_YA = 'AQAAAAAAmqGlAADLW7pMZiqA9UKuijTKF5D1sKQ'
+
+class YaDisk:
+    home_path = os.getcwd()
     url_ya = 'https://cloud-api.yandex.net/v1/disk/resources'
+    base_path = 'Photos_vk'
+
+    def create_log(self, existence, flag=0):
+        path_log = os.path.join(self.home_path, 'logs/logs.txt')
+        if flag == 1:
+            print(existence)
+        with open(path_log, 'a', encoding='utf-8') as file_write:
+            result = f'{datetime.now()} | {existence}\n'
+            file_write.write(result)
+        print('*', end=' ')
+        time.sleep(0.1)
+
+    def send_photo_ya(self, photos_list):
+        path_folder = f'{self.base_path}/{str(self.folder)}'
+
+        response = requests.put(self.url_ya, headers=self.headers_ya, params={'path': path_folder})  # создаем папку
+
+        if response.status_code == 201:
+            self.create_log(f'Папка " {self.folder} " создана успешно')
+        elif response.status_code == 409:
+            self.create_log(f'Папка " {self.folder} " уже есть')
+        else:
+            return
+        self.create_log('Загружаем файлы на Яндекс-диск:')
+        for photo in photos_list:
+            path_file = f'{path_folder}/{photo["file_name"]}'
+            params = {
+                'url': photo['url'],
+                'path': path_file
+            }
+
+            url_up = f'{self.url_ya}/{"upload"}'
+            requests.post(url_up, headers=self.headers_ya, params=params)
+            self.create_log(f'{photo["file_name"]} загружен в папку "{self.folder}"', 0)
+
+    def create_json(self, photos_list):
+        photos_list_copy = copy.deepcopy(photos_list)
+        path_json = os.path.join(self.home_path, 'logs', self.folder + '.json')
+
+        for photo in photos_list_copy:
+            del photo['url']
+
+        with open(path_json, 'w') as file_write:
+            json.dump(photos_list_copy, file_write)
+
+        return self.create_log(f'json-файл для " {self.folder} " создан\n')
+
+
+class VkPhoto(YaDisk):
+    url_general = 'https://api.vk.com/method/'
 
     def __init__(self, id_vk, token_vk, token_ya):
         self.id_vk = id_vk
@@ -24,10 +78,10 @@ class VkPhoto:
             'Content-Type': 'application/json',
             'Authorization': 'OAuth {}'.format(self.token_ya)
         }
+        self.create_log(f'Экземпляр класса для аккаунта "{self.id_vk}" создан')
 
     def find_id(self):
         url_users_get = self.url_general + 'users.get'
-
         response = requests.get(url_users_get, self.params_vk).json()
         id_vk_res = response['response'][0]['id']
 
@@ -38,7 +92,9 @@ class VkPhoto:
 
         try:
             int(self.id_vk)
+            self.create_log(f'аккаунт " {self.id_vk} " переводить в числовой вид не надо')
         except ValueError:
+            self.create_log(f'Переводим аккаунт " {self.id_vk} " в числовой вид')
             self.id_vk = self.find_id()
 
         url_get = self.url_general + 'photos.get'
@@ -51,8 +107,9 @@ class VkPhoto:
         }
 
         response = requests.get(url_get, params={**self.params_vk, **get_params}).json()['response']['items']
-
+        self.create_log(f'Создаем список файлов для загрузки на яндекс-диск:')
         biggest_photos_list = []
+        likes_list = []
         for item in response:
             biggest_photo_dict = {}
             max_width = 0
@@ -64,75 +121,37 @@ class VkPhoto:
                     max_width = photo['width']
                     url_biggest_photo = photo['url']
                     type_big = photo['type']
+
+            if item['likes']['count'] in likes_list:
+                file_name = str(item['likes']['count']) + '-' + str(date.today()) + '.jpg'
+            else:
+                file_name = str(item['likes']['count']) + '.jpg'
+
+            likes_list.append(item['likes']['count'])
+
             biggest_photo_dict = {
                 'url': url_biggest_photo,
-                'size': type_big,
-                'file_name': str(item['likes']['count']) + '.jpg'
+                'file_name': file_name,
+                'size': type_big
+
             }
+            self.create_log(f'файл {file_name} добавлен в список')
             biggest_photos_list.append(biggest_photo_dict)
 
         return biggest_photos_list
 
-    def send_photo_ya(self, photos_list):
-        path_folder = f'{self.base_path}/{str(self.folder)}'
-
-        response = requests.put(self.url_ya, headers=self.headers_ya, params={'path': path_folder})  # создаем папку
-
-        if response.status_code == 201:
-            print(f'Папка " {self.folder} " создана успешно')
-        elif response.status_code == 409:
-            print(f'Папка " {self.folder} " уже есть')
-        else:
-            return
-        print('Загружаем файлы на Яндекс-диск:')
-        for photo in photos_list:
-            path_file = f'{path_folder}/{photo["file_name"]}'
-            params = {
-                'url': photo['url'],
-                'path': path_file
-            }
-
-            url_up = f'{self.url_ya}/{"upload"}'
-            response = requests.post(url_up, headers=self.headers_ya, params=params)
-            print('*', end=' ')
-            time.sleep(1)
-        print()
-        return
-
-    def create_json(self, photos_list):
-        photos_list_copy = copy.deepcopy(photos_list)
-        base_path = os.getcwd()
-        path_json = os.path.join(base_path, 'logs', self.folder + '.json')
-
-        for photo in photos_list_copy:
-            del photo['url']
-
-        with open(path_json, 'w') as file_write:
-            json.dump(photos_list_copy, file_write)
-        return print(f'json-файл для " {self.folder} " создан\n')
-
-def read_token(object):
-    with open('token.txt') as file_object:
-        for list in file_object:
-            if list.split('|')[0].strip() == object:
-                token = list.split('|')[1].strip()
-                return token
-    return print('Такого токена нет')
-
 if __name__ == '__main__':
 
-    token_vk = read_token('vk')
-    token_ya = read_token('ya')
-    token_ = read_token('y')
-
-    begemot_korovin = VkPhoto('begemot_korovin', token_vk, token_ya)
+    begemot_korovin = VkPhoto('begemot_korovin', TOKEN_VK, TOKEN_YA)
     photos = begemot_korovin.photos_get()
     begemot_korovin.send_photo_ya(photos)
     begemot_korovin.create_json(photos)
-    # pprint(photos)
 
-    sergeg00d = VkPhoto(42721846, token_vk, token_ya)
+    sergeg00d = VkPhoto(42721846, TOKEN_VK, TOKEN_YA)
     photos = sergeg00d.photos_get()
     sergeg00d.send_photo_ya(photos)
     sergeg00d.create_json(photos)
-    # pprint(photos)
+    print(f'\nВыводится для примера json-файл для "{begemot_korovin.folder}":')
+    with open('logs/begemot_korovin.json', encoding='utf-8') as f:
+        templates = json.load(f)
+    pprint(templates)
